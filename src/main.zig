@@ -22,8 +22,8 @@ pub fn main() !void {
 
     var args = std.process.args();
     var bar: bool = true;
-    var samples: u8 = 10;
-    var depth: u8 = 10;
+    var samples: u8 = 100;
+    var depth: u8 = 50;
     var png = false;
     var path: []const u8 = undefined;
 
@@ -98,11 +98,14 @@ pub fn rayTracingCamera(arena: std.mem.Allocator, camera: Camera, rectangle: [4]
         random,
         color.Rgb.init(0.1, 0.2, 0.5),
     );
-    var material_left = materials.Metal.init(
-        random,
-        color.Rgb.init(0.8, 0.8, 0.8),
-        0.3,
-    );
+    // var material_left = materials.Metal.init(
+    //     random,
+    //     color.Rgb.init(0.8, 0.8, 0.8),
+    //     0.3,
+    // );
+    // refraction index of glass is 1.5
+    var material_left = materials.Dielectric.init(random, 1.5);
+    var material_bubble = materials.Dielectric.init(random, 1.0 / 1.5);
     var material_right = materials.Metal.init(
         random,
         color.Rgb.init(0.8, 0.6, 0.2),
@@ -126,6 +129,11 @@ pub fn rayTracingCamera(arena: std.mem.Allocator, camera: Camera, rectangle: [4]
         .center = Point.init(-1, 0, -1),
         .radius = 0.5,
         .material = material_left.material(),
+    });
+    try world.sphere.append(.{
+        .center = Point.init(-1, 0, -1),
+        .radius = 0.4,
+        .material = material_bubble.material(),
     });
     try world.sphere.append(.{
         .center = Point.init(1, 0, -1),

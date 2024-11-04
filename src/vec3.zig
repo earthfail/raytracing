@@ -133,6 +133,19 @@ pub const Vec = struct {
             normal.mulScalar(2 * normal.dot(self)),
         );
     }
+    pub fn refract(self: Vec, normal: Vec, etai_ratio: f32) Vec {
+        // etai_ratio is the ratio of the refraction index of the start material over the refraction index of the second material
+        // R_perp to the normal and R_parallel is in the direction of the normal
+        // R_perp = frac{eta}{eta_tag}(R + cos(theta)normal)
+        // R_parallel = -sqrt{1-|R_perp|^2}*normal
+        const cos_theta: f32 = @min(1, -self.dot(normal));
+        const r_out_perp = self
+            .addImmutable(normal.mulScalar(cos_theta))
+            .mulScalar(etai_ratio);
+        const r_out_parallel = normal
+            .mulScalar(-@sqrt(1 - r_out_perp.len_squared()));
+        return r_out_perp.addImmutable(r_out_parallel);
+    }
 };
 
 pub fn randomUnitVector(random: std.Random, max_attempts: usize) Vec {

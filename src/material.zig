@@ -72,3 +72,43 @@ pub const Metal = struct {
         };
     }
 };
+
+pub const Dielectric = struct {
+    refraction_index: f32,
+    random: std.Random,
+    pub fn init(random: std.Random, refraction_index: f32) Dielectric {
+        return .{ .random = random, .refraction_index = refraction_index };
+    }
+    pub fn reflectance(cosine: f32, refraction_index: f32) f32 {
+        // Use Schlick's approximation
+        var r0 = (1 - refraction_index) / (1 + refraction_index);
+        r0 *= r0;
+        return r0 + (1 - r0) * std.math.pow(f32, (1 - cosine), 5);
+    }
+    pub fn scatter(ctx: *anyopaque, r_in: Ray, hit_record: *HitRecord, attenuation: *color.Rgb, scattered: *Ray) bool {
+        const self: *Dielectric = @ptrCast(@alignCast(ctx));
+        attenuation.* = color.Rgb.init(1, 1, 1);
+        const ri: f32 = if (hit_record.front_face)
+            1 / self.refraction_index
+        else
+            self.refraction_index;
+        const unit_direction = r_in.dir.unit();
+        const cos_theta: f32 = @min(1, -hit_record.normal.dot(unit_direction));
+        const sin_theta: f32 = @sqrt(1 - cos_theta * cos_theta);
+        const cannot_refract: bool = ri * sin_theta > 1;
+
+        const dir: vec3.Vec = if (cannot_refract or reflectance(cos_theta, ri) > self.random.float(f32))
+            unit_direction.reflect(hit_record.normal)
+        else
+            unit_direction.refract(hit_record.normal, ri);
+
+        scattered.* = .{ .orig = hit_record.p, .dir = dir };
+        return true;
+    }
+    pub fn material(self: *Dielectric) Material {
+        return .{
+            .ctx = self,
+            .scatterFn = scatter,
+        };
+    }
+};
