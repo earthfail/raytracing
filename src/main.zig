@@ -75,13 +75,51 @@ pub fn main() !void {
     var camera = Camera.init();
     camera.max_depth = depth;
     camera.samples_per_pixel = samples;
+    camera.vfov = 90;
     rectangle[0] = @max(0, rectangle[0]);
     rectangle[1] = @max(0, rectangle[1]);
     rectangle[2] = @min(camera.image_width, rectangle[2]);
     rectangle[3] = @min(camera.image_height, rectangle[3]);
 
     // try rayTracing(allocator, bar);
-    try rayTracingCamera(allocator, camera, rectangle, bar, png, path);
+    // try rayTracingCamera(allocator, camera, rectangle, bar, png, path);
+    try rayTracingFOV(allocator, camera, rectangle, bar);
+}
+pub fn rayTracingFOV(arena: std.mem.Allocator, camera: Camera, rectangle: [4]i32, bar: bool) !void {
+    var prng = std.Random.DefaultPrng.init(t: {
+        const seed: u64 = @intCast((std.time.timestamp()));
+        break :t seed;
+    });
+    const random = prng.random();
+
+    const R = @cos(std.math.pi / 4.0);
+    var material_left = materials.Lambertian.init(
+        random,
+        color.Rgb.init(0, 0, 1),
+    );
+    var material_right = materials.Lambertian.init(
+        random,
+        color.Rgb.init(1, 0, 0),
+    );
+    var world: hittable.Set = .{
+        .sphere = std.ArrayList(hittable.Sphere).init(arena),
+    };
+    try world.sphere.append(.{
+        .center = Point.init(-R, 0, -1),
+        .radius = R,
+        .material = material_left.material(),
+    });
+    try world.sphere.append(.{
+        .center = Point.init(R, 0, -1),
+        .radius = R,
+        .material = material_right.material(),
+    });
+    const stdout = std.io.getStdOut().writer();
+    var buffered_stdout = std.io.bufferedWriter(stdout);
+    const writer = buffered_stdout.writer();
+
+    try camera.render(writer, random, world, rectangle, bar);
+    try buffered_stdout.flush();
 }
 pub fn rayTracingCamera(arena: std.mem.Allocator, camera: Camera, rectangle: [4]i32, bar: bool, png: bool, path: []const u8) !void {
     var prng = std.Random.DefaultPrng.init(t: {

@@ -20,6 +20,7 @@ samples_per_pixel: i32 = 10,
 max_depth: u8 = 10,
 // Camera
 focal_length: f32 = 1.0,
+vfov: f32 = 90, // Vertical view angle in degrees
 viewport_height: f32 = 2.0,
 viewport_width: f32 = undefined,
 camera_center: Point = undefined,
@@ -31,6 +32,10 @@ pub fn init() Self {
     const aspect_ratio: f32 = @as(f32, @floatFromInt(res.image_width)) / @as(f32, @floatFromInt(res.image_height));
     log.debug("image width,height {},{}", .{ res.image_width, res.image_height });
     // Camera
+    res.focal_length = 1.0;
+    const theta: f32 = degrees2radians(res.vfov);
+    const h = @tan(theta / 2);
+    res.viewport_height = 2 * h * res.focal_length;
     res.viewport_width = res.viewport_height * aspect_ratio;
     res.camera_center = Point.init(0, 0, 0);
     log.debug("focal_length, viewport width,height {d} {d} {d}", .{ res.focal_length, res.viewport_width, res.viewport_height });
@@ -156,4 +161,8 @@ pub fn updateViewportHeight(self: *Self, height: f32) void {
     self.viewport_height = height;
     const aspect_ratio: f32 = @as(f32, @floatFromInt(self.image_width)) / @as(f32, @floatFromInt(self.image_height));
     self.viewport_width = self.viewport_height * aspect_ratio;
+}
+
+pub fn degrees2radians(degree: f32) f32 {
+    return degree * std.math.rad_per_deg;
 }
