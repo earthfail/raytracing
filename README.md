@@ -21,8 +21,13 @@ Following the tutorial
    [advice](https://www.youtube.com/watch?v=xt1KNDmOYqA))
 5. Found it hard to inspect visual defects and the effect of
    parameters like max number of bounces and sampling rate per
-   pixel. So I created a visualization tool in raylib but it took more
-   time than I expected. I now understand the power of lisp and the
-   leverage a repl has.
+   pixel. So I created a visualization tool in raylib and it took alot
+   of time but not as much as trying to learn scripting in gimp. I now
+   understand the power of lisp and the leverage a repl has.
 6. visual studio code is great for viewing markdown before publishing
    to github ;)
+
+# Run
+to get the final image install zig version 0.14 and run
+`zig build -Doptimize=ReleaseFast run -- --vfov 20 --focus-dist 10 --defocus-angle 0.6 --from 13 2 3 --at 0 0 0 --width 1200 --samples 500 --depth 50 > image.ppm`
+or just use the binary `./raytracing` with the above options

@@ -102,6 +102,14 @@ pub const Vec = struct {
             return res;
         }
     }
+    pub fn cross(v: Vec, u: Vec) Vec {
+        const x = v.pos[Y] * u.pos[Z] - v.pos[Z] * u.pos[Y];
+        const y = v.pos[Z] * u.pos[X] - v.pos[X] * u.pos[Z];
+        const z = v.pos[X] * u.pos[Y] - v.pos[Y] * u.pos[X];
+        return .{
+            .pos = .{ x, y, z },
+        };
+    }
     pub fn dot(self: Vec, v: Vec) f32 {
         var res: f32 = 0;
         for (&self.pos, &v.pos) |p, q| {
@@ -147,7 +155,20 @@ pub const Vec = struct {
         return r_out_perp.addImmutable(r_out_parallel);
     }
 };
-
+pub const RandomVecOptions = struct {
+    min: f32 = 0,
+    max: f32 = 1,
+};
+pub fn randomVector(random: std.Random, option: RandomVecOptions) Vec {
+    const min = option.min;
+    const max = option.max;
+    const diff = max - min;
+    return Vec.init(
+        random.float(f32) * diff + min,
+        random.float(f32) * diff + min,
+        random.float(f32) * diff + min,
+    );
+}
 pub fn randomUnitVector(random: std.Random, max_attempts: usize) Vec {
     for (0..max_attempts) |_| {
         const p = Vec.init(
@@ -170,4 +191,17 @@ pub fn randomVectorOnHemisphere(random: std.Random, max_attempts: usize, normal:
         random_unit_vector
     else
         random_unit_vector.neg();
+}
+pub fn randomVectorInUnitDisk(random: std.Random, max_attempts: usize) Vec {
+    for (0..max_attempts) |_| {
+        const p = Vec.init(
+            random.float(f32) * 2 - 1,
+            random.float(f32) * 2 - 1,
+            0,
+        );
+        if (p.len_squared() < 1)
+            return p;
+    } else {
+        @panic("Failed to generate vector in unit disk");
+    }
 }

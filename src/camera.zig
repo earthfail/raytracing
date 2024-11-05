@@ -19,55 +19,84 @@ samples_per_pixel: i32 = 10,
 // Bouncing lights
 max_depth: u8 = 10,
 // Camera
-focal_length: f32 = 1.0,
+// focal_length: f32 = 1.0,
 vfov: f32 = 90, // Vertical view angle in degrees
 viewport_height: f32 = 2.0,
 viewport_width: f32 = undefined,
 camera_center: Point = undefined,
+// Camera frame basis vectors: u to the right, w to the back and v up making a right hand triple (det(u,v,w) > 0)
+// TODO(Architecture): collect in one array of vectors
+u: Vec = undefined,
+v: Vec = undefined,
+w: Vec = undefined,
 
-pub fn init() Self {
-    var res: Self = .{};
+// parameters
+look_from: Point = Point.init(0, 0, 0), // Point camera is looking from
+look_at: Point = Point.init(0, 0, -1), // point camera is looking at
+view_up: Vec = Vec.init(0, 1, 0), // up direction for the camera
+
+// zig fmt: off
+defocus_angle: f32 = 0, // Variation angle of rays from each pixel into the lens of a camera.
+                        // we don't simulate the inside of the camera behind the lens until the sensor
+focus_dist: f32 = 10,
+// zig fmt: on
+// TODO(Architecture): collect in one array of vectors
+defocus_disk_u: Vec = undefined, // Defocus disk horizontal radius
+defocus_disk_v: Vec = undefined, // Defocus disk vertical radius
+pub fn init(res: *Self) void {
     // Image
     res.image_height = @max(1, @as(i32, @intFromFloat(@as(f32, @floatFromInt(res.image_width)) / res.ideal_aspect_ratio)));
     const aspect_ratio: f32 = @as(f32, @floatFromInt(res.image_width)) / @as(f32, @floatFromInt(res.image_height));
     log.debug("image width,height {},{}", .{ res.image_width, res.image_height });
     // Camera
-    res.focal_length = 1.0;
+    // res.focal_length = res.look_from.subImmutable(res.look_at).len();
     const theta: f32 = degrees2radians(res.vfov);
     const h = @tan(theta / 2);
-    res.viewport_height = 2 * h * res.focal_length;
+    // res.viewport_height = 2 * h * res.focal_length;
+    res.viewport_height = 2 * h * res.focus_dist;
     res.viewport_width = res.viewport_height * aspect_ratio;
-    res.camera_center = Point.init(0, 0, 0);
-    log.debug("focal_length, viewport width,height {d} {d} {d}", .{ res.focal_length, res.viewport_width, res.viewport_height });
+    res.camera_center = res.look_from;
+    log.debug("focal_length, viewport width,height {d} {d} {d}", .{ res.focus_dist, res.viewport_width, res.viewport_height });
+    // Camera basis
+    res.w = res.look_from.subImmutable(res.look_at).unit();
+    res.u = res.view_up.cross(res.w).unit();
+    res.v = res.w.cross(res.u);
+    std.debug.print("u,v,w: {d} {d} {d}\n", .{ res.u.pos, res.v.pos, res.w.pos });
+    // Calculate the camera defocus disk basis vectors.
+    const defocus_radius = res.focus_dist * @tan(degrees2radians(res.defocus_angle / 2));
+    std.debug.print("defocus_radius: {d}\n", .{defocus_radius});
+    std.debug.print("defocus_angle(degrees,radians): {d}, {d}\n", .{ res.defocus_angle, degrees2radians(res.defocus_angle) });
 
-    return res;
+    res.defocus_disk_u = res.u.mulScalar(defocus_radius);
+    res.defocus_disk_v = res.v.mulScalar(defocus_radius);
+    std.debug.print("defocus disk u,v: {d} {d}\n", .{ res.defocus_disk_u.pos, res.defocus_disk_v.pos });
 }
+
 pub fn render(self: Self, writer: anytype, random: std.Random, world: hittable.Set, rectangle: [4]i32, bar: bool) !void {
 
     // horizontal and vertical vectors from the top left point of the viewport
     // to the facing edges
-    const viewport_u = Vec{ .pos = .{ self.viewport_width, 0, 0 } };
-    const viewport_v = Vec{ .pos = .{ 0, -self.viewport_height, 0 } };
+    const viewport_u = self.u.mulScalar(self.viewport_width);
+    const viewport_v = self.v.mulScalar(-self.viewport_height); // images vertical direction is "down"
     const viewport_dirs = [_]Vec{ viewport_u, viewport_v };
 
     const pixel_delta_u = viewport_u.divScalar(@floatFromInt(self.image_width));
     const pixel_delta_v = viewport_v.divScalar(@floatFromInt(self.image_height));
-    const pixel_delta_dirs = [_]Vec{ pixel_delta_u, pixel_delta_v };
+    const pixel_delta = [_]Vec{ pixel_delta_u, pixel_delta_v };
 
     const viewport_top_left = blk: {
         var res = self.camera_center;
-        const camera_to_viewport = Vec{ .pos = .{ 0, 0, -self.focal_length } };
-        _ = res.add(camera_to_viewport)
+        _ = res.add(Vec.neg(self.w.mulScalar(self.focus_dist)))
             .add(Vec.neg(viewport_dirs[Vec.X].mulScalar(0.5)))
             .add(Vec.neg(viewport_dirs[Vec.Y].mulScalar(0.5)));
         break :blk res;
     };
-    log.debug("viewport top left {any}", .{viewport_top_left});
+    std.debug.print("viewport top left {any}\n", .{viewport_top_left});
 
     const pixel00_location = blk: {
         var res = viewport_top_left;
-        _ = res.add(pixel_delta_dirs[Vec.X].mulScalar(0.5))
-            .add(pixel_delta_dirs[Vec.Y].mulScalar(0.5));
+        _ = res.add(pixel_delta[Vec.X].mulScalar(0.5))
+            .add(pixel_delta[Vec.Y].mulScalar(0.5));
         break :blk res;
     };
     // Anti aliasing
@@ -90,14 +119,19 @@ pub fn render(self: Self, writer: anytype, random: std.Random, world: hittable.S
                     const pixel_sample =
                         pixel00_location
                         .addImmutable(
-                        pixel_delta_dirs[Vec.X]
+                        pixel_delta[Vec.X]
                             .mulScalar(di + offset[0]),
                     ).addImmutable(
-                        pixel_delta_dirs[Vec.Y]
+                        pixel_delta[Vec.Y]
                             .mulScalar(dj + offset[1]),
                     );
-                    const ray_direction = pixel_sample.subImmutable(self.camera_center);
-                    const ray: Ray = .{ .orig = self.camera_center, .dir = ray_direction };
+                    const ray_origin = if (self.defocus_angle <= 0)
+                        self.camera_center
+                    else
+                        self.defocusDiskSample(random);
+
+                    const ray_direction = pixel_sample.subImmutable(ray_origin);
+                    const ray: Ray = .{ .orig = ray_origin, .dir = ray_direction };
                     var attenuation = color.Rgb.init(1, 1, 1);
                     const color_sample = rayColor(
                         ray,
@@ -143,6 +177,12 @@ pub fn rayColor(r: Ray, world: hittable.Set, random: std.Random, depth: u8, atte
         blue.mulScalar(a),
     ).mulImmutable(attenuation.*);
 }
+pub fn defocusDiskSample(self: Self, random: std.Random) Vec {
+    const p = vec3.randomVectorInUnitDisk(random, 60);
+    return self.camera_center
+        .addImmutable(self.defocus_disk_u.mulScalar(p.pos[Vec.X]))
+        .addImmutable(self.defocus_disk_v.mulScalar(p.pos[Vec.Y]));
+}
 
 pub fn updateWidth(self: *Self, width: i32) void {
     self.image_width = @max(1, width);
@@ -162,7 +202,6 @@ pub fn updateViewportHeight(self: *Self, height: f32) void {
     const aspect_ratio: f32 = @as(f32, @floatFromInt(self.image_width)) / @as(f32, @floatFromInt(self.image_height));
     self.viewport_width = self.viewport_height * aspect_ratio;
 }
-
 pub fn degrees2radians(degree: f32) f32 {
     return degree * std.math.rad_per_deg;
 }
